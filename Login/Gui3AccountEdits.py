@@ -26,7 +26,7 @@ def load_accounts():
 def save_accounts(accounts):
     for account, data in accounts.items():
         for field, value in data.items():
-            set_key('.env', f"{account.upper()}_{field.upper()}", value)
+            set_key('../.env', f"{account.upper()}_{field.upper()}", value)
 
 def on_select_account():
     selected_account = account_var.get()
