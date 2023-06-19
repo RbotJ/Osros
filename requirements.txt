@@ -1,0 +1,8 @@
+psutil==5.9.5
+PyAutoGUI==0.9.54
+PyGetWindow~=0.0.9
+python-dotenv~=1.0.0
+opencv-python~=4.7.0.72
+numpy==1.25.0
+pypiwin32~=223
+pywin32~=306
