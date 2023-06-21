@@ -90,7 +90,7 @@ class MainWindow:
 
     def login(self):
         print("Login button was clicked!")
-        subprocess.Popen(['python', 'Sprint4/MainLogin.py', self.active_user])
+        subprocess.Popen(['python', 'Sprint4/Login.py', self.active_user])
 
     def logout(self):
         print("Logout button was clicked!")

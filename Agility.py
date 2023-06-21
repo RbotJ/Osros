@@ -35,8 +35,8 @@ def click_on_position(queue):
     while True:
         if not queue.empty():
             position = queue.get()
-            x_offset = random.randint(-5, 5)  # randomize x position
-            y_offset = random.randint(-5, 5)  # randomize y position
+            x_offset = random.randint(-4, 4)  # randomize x position
+            y_offset = random.randint(-4, 4)  # randomize y position
             move_delay = random.uniform(0.1, 0.2)  # randomize delay before moving
             click_delay = random.uniform(0.1, 0.6)  # randomize delay before clicking
 
@@ -61,7 +61,7 @@ def make_decision(templates, grayscale, screenshot, queue, current_map, clicks_t
                     clicks_to_spend = 1  # Set clicks to spend to 1
                     return True, current_map, clicks_to_spend
 
-    # Check for Mog and Clk templates when there are clicks to spend
+    # Check for Mog, Clm and Clk templates when there are clicks to spend
     if clicks_to_spend > 0:
         for template_name, template in templates.items():
             if template_name.startswith("Mog"):
@@ -70,11 +70,11 @@ def make_decision(templates, grayscale, screenshot, queue, current_map, clicks_t
                 if message is not None:
                     print(message)
                     queue.put(position)
-                    time.sleep(3)  # Wait for 3 seconds
+                    time.sleep(2)  # Wait for 3 seconds
                     clicks_to_spend += 1  # Add an extra click to spend
                     return True, current_map, clicks_to_spend
 
-            if template_name.startswith("Clk"):
+            if template_name.startswith("Cl"):
                 # If it is a clickpoint template
                 message, position = find_template(template_name, template, grayscale, screenshot)
                 if message is not None:
@@ -153,7 +153,7 @@ def main():
 
             if cv2.waitKey(1) & 0xFF == ord('q'):  # Quit if 'q' is pressed
                 break
-            time.sleep(.05)  # Pause for a second
+            time.sleep(.1)  # Pause for a second
     except Exception as e:
         print(f"An error occurred: {e}")
     finally:

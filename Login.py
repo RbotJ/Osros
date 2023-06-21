@@ -46,7 +46,7 @@ title = "RuneLite"
 window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
 
 # Prepare templates
-template_dir = 'templates/'  # directory with templates
+template_dir = 'Login/'  # directory with templates
 templates = {filename: cv2.imread(template_dir + filename, 0) for filename in os.listdir(template_dir)}
 
 # Create a window for displaying the image
