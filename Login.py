@@ -1,15 +1,23 @@
+import logging
+import os
+import sys
+import time
+
 import cv2
 import numpy as np
-import pygetwindow as gw
 import pyautogui
+import pygetwindow as gw
 import win32api
 import win32con
-import os
-import time
 from dotenv import load_dotenv
-import sys
+
+from automation.logging_config import configure_logging
+
+
+logger = logging.getLogger(__name__)
 
 # Load the .env file
+configure_logging()
 load_dotenv()
 
 
@@ -39,10 +47,8 @@ def read_users():
 users = read_users()
 
 # Set active_user to the user you want to log in as
-if len(sys.argv) > 1:
-    active_user = sys.argv[1]
-else:
-    active_user = 'User3'
+active_user = sys.argv[1] if len(sys.argv) > 1 else 'User3'
+logger.info("Starting login automation", extra={"active_user": active_user})
 
 title = "RuneLite"
 window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
@@ -66,6 +72,10 @@ while True:
     new_width = screen_width // 2  # Quarter width
     new_height = screen_height // 2  # Quarter height
     if window.width != new_width or window.height != new_height:
+        logger.debug(
+            "Resizing RuneLite window",
+            extra={"width": new_width, "height": new_height},
+        )
         window.resizeTo(new_width, new_height)
 
     # Move the window to the top left corner
@@ -99,18 +109,20 @@ while True:
         # If a match is found, draw a rectangle and break the loop as we've identified the state
         for pt in zip(*loc[::-1]):
             cv2.rectangle(screenshot_np, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
-            print(f"State recognized: {template_name}")
+            logger.info("State recognized", extra={"template": template_name})
             state_recognized = True
 
             # New code: act depending on the detected state
             if template_name == '1 Welcome.png':
                 # Click the recognized welcome screen area
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
+                logger.info("Welcome screen clicked", extra={"template": template_name})
                 time.sleep(1)
             elif template_name == 'LoginField.png':
                 # Click the detected login field and type username
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
                 pyautogui.write(users[active_user]['login'])
+                logger.info("Entered username", extra={"user": active_user})
                 time.sleep(1)
             elif template_name == 'PassField.png':
                 # Click the detected password field and type password
@@ -118,18 +130,20 @@ while True:
                 pyautogui.write(users[active_user]['password'])
                 time.sleep(1)
                 pyautogui.press('enter')  # Press Enter to submit
+                logger.info("Password submitted", extra={"user": active_user})
                 time.sleep(1)
             elif template_name == '3 ClickToPlay.jpg':
                 # Click the detected ClickToPlay area
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
+                logger.info("Clicked to play", extra={"template": template_name})
             elif template_name == '4 InGame.jpg':
                 # Detected in-game state, print it for now, add desired functionality here
-                print("In-game state detected")
+                logger.info("In-game state detected")
 
             break  # Break out of the loop once a match is found and handled
 
     if not state_recognized:
-        print("No state recognized: Waiting")
+        logger.debug("No login state recognized: waiting")
 
     cv2.imshow("Window", screenshot_np)
     if cv2.waitKey(1) & 0xFF == ord('q'):  # Quit if 'q' is pressed

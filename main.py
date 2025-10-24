@@ -1,4 +1,8 @@
+import logging
 import os
+import subprocess
+import threading
+import time
 import tkinter as tk
 from tkinter import Button, Label, ttk, messagebox
 from dotenv import load_dotenv
@@ -8,6 +12,15 @@ import time
 
 from automation_controller import AutomationController, TaskStatus
 from login_launcher import LoginLaunchError, LoginLauncher
+from tkinter import Button, Label, ttk
+
+import psutil
+from dotenv import load_dotenv
+
+from automation.logging_config import configure_logging
+
+
+logger = logging.getLogger(__name__)
 
 class MainWindow:
     def __init__(self, master, accounts, active_username, usernames):
@@ -102,176 +115,37 @@ class MainWindow:
     def on_username_select(self, event):
         self.active_username = self.combo.get()
         print(f"Active User is {self.active_username}")
+        self.active_user = self.combo.get()
+        logger.info("Active user changed", extra={"active_user": self.active_user})
 
     def launch(self):
+        logger.info("Launching RuneLite", extra={"path": self.runelite_path})
         os.startfile(self.runelite_path)
 
     def login(self):
-        account_key = self._resolve_account_key(self.active_username)
-        if not account_key:
-            messagebox.showerror("Login", "Unable to locate the selected account in configuration.")
-            return
-
-        try:
-            self.login_launcher.launch(account_key)
-        except LoginLaunchError as exc:
-            messagebox.showerror("Login", str(exc))
-            return
-
-        self.status_var.set("Status: Login automation running…")
-        self._poll_login_process()
+        logger.info("Login button clicked", extra={"active_user": self.active_user})
+        subprocess.Popen(['python', 'Sprint4/Login.py', self.active_user])
 
     def logout(self):
-        print("Logout button was clicked!")
-        self.controller.stop_all()
-        self.status_var.set("Status: Logged out")
+        logger.info("Logout button clicked")
 
     def agility(self):
-        self._start_task('Agility')
+        logger.info("Agility button clicked")
 
     def fletching(self):
-        self._start_task('Fletching')
+        logger.info("Fletching button clicked")
 
     def mining(self):
-        self._start_task('Mining')
+        logger.info("Mining button clicked")
 
     def lumbridge(self):
-        self._start_task('Lumbridge')
+        logger.info("Lumbridge navigation clicked")
 
     def varrock(self):
-        self._start_task('Varrock')
+        logger.info("Varrock navigation clicked")
 
     def ge(self):
-        self._start_task('GE')
-
-    def cancel_task(self):
-        if self.active_task_name:
-            self.controller.stop_task(self.active_task_name)
-
-    def _start_task(self, task_name):
-        if self.active_task_name and self.controller.is_running(self.active_task_name):
-            if self.active_task_name == task_name:
-                messagebox.showinfo("Task Running", f"{task_name} is already running.")
-                return
-            messagebox.showwarning(
-                "Task Running",
-                "Another task is currently in progress. Please cancel it before starting a new one.",
-            )
-            return
-
-        try:
-            self.controller.start_task(task_name, user=self.active_username, callback=self._handle_task_status)
-        except (ValueError, RuntimeError) as exc:
-            messagebox.showerror("Automation", str(exc))
-            return
-
-        self.active_task_name = task_name
-        self.active_task_category = None
-        self.status_var.set(f"Status: {task_name} started")
-        self.cancel_button.config(state=tk.NORMAL)
-
-    def _handle_task_status(self, status: TaskStatus):
-        def update_ui():
-            if status.category == 'skill':
-                self.activity_var.set(f"Activity: {status.name}")
-            elif status.category == 'location':
-                self.location_var.set(f"Location: {status.name}")
-            else:
-                self.activity_var.set(f"Activity: {status.name}")
-
-            if status.state == 'running':
-                self.active_task_category = status.category
-                progress = int(status.progress * 100) if status.progress is not None else None
-                if progress is not None:
-                    self.status_var.set(f"Status: {status.message} ({progress}%)")
-                else:
-                    self.status_var.set(f"Status: {status.message}")
-            elif status.state == 'completed':
-                self.status_var.set(f"Status: {status.message}")
-                self.cancel_button.config(state=tk.DISABLED)
-                self.active_task_name = None
-                self.active_task_category = None
-            elif status.state == 'cancelled':
-                self.status_var.set("Status: Task cancelled")
-                self.cancel_button.config(state=tk.DISABLED)
-                self.active_task_name = None
-                self.active_task_category = None
-            elif status.state == 'error':
-                message = status.message
-                if status.error:
-                    message = f"{message}: {status.error}"
-                self.status_var.set(f"Status: {message}")
-                messagebox.showerror("Automation", message)
-                self.cancel_button.config(state=tk.DISABLED)
-                self.active_task_name = None
-                self.active_task_category = None
-
-        self.master.after(0, update_ui)
-
-    def _poll_login_process(self):
-        process = self.login_launcher.process
-        if not process:
-            return
-
-        return_code = self.login_launcher.poll()
-        if return_code is None:
-            self.master.after(1000, self._poll_login_process)
-            return
-
-        stderr_output = self.login_launcher.consume_stderr().strip()
-        if return_code == 0:
-            self.status_var.set("Status: Login complete")
-            messagebox.showinfo("Login", "Login automation finished successfully.")
-        else:
-            message = f"Login automation exited with code {return_code}"
-            if stderr_output:
-                message += f"\n\n{stderr_output}"
-            self.status_var.set("Status: Login failed")
-            messagebox.showerror("Login", message)
-
-        self.login_launcher.terminate()
-
-    def _resolve_account_key(self, username):
-        if username in self.accounts:
-            return username
-        for key, details in self.accounts.items():
-            if details.get('username') == username:
-                return key
-        return None
-
-    def _register_default_tasks(self):
-        def build_task(description, *, steps=10, delay=0.5):
-            def task(stop_event, update, user):
-                for step in range(steps):
-                    if stop_event.is_set():
-                        return
-                    prefix = description
-                    if user:
-                        prefix = f"{description} for {user}"
-                    update(f"{prefix} ({step + 1}/{steps})", (step + 1) / steps)
-                    time.sleep(delay)
-            return task
-
-        skill_tasks = {
-            'Agility': 'Executing agility routine',
-            'Fletching': 'Training fletching',
-            'Mining': 'Mining resources',
-        }
-        for name, description in skill_tasks.items():
-            self.controller.register_task(name, build_task(description, steps=12, delay=0.6), category='skill')
-
-        location_tasks = {
-            'Lumbridge': 'Navigating to Lumbridge',
-            'Varrock': 'Travelling to Varrock',
-            'GE': 'Heading to the Grand Exchange',
-        }
-        for name, description in location_tasks.items():
-            self.controller.register_task(name, build_task(description, steps=6, delay=0.8), category='location')
-
-    def on_close(self):
-        self.controller.stop_all()
-        self.login_launcher.terminate()
-        self.master.destroy()
+        logger.info("Grand Exchange navigation clicked")
 
     def check_runelite(self):
         if self.is_runelite_running():
@@ -318,6 +192,8 @@ def get_usernames(accounts):
     return [account_info['username'] for account_info in accounts.values()]
 
 
+configure_logging()
+logger.info("Loading accounts for main window")
 accounts = load_accounts()
 usernames = get_usernames(accounts)
 active_user = usernames[0]  # Set the first user as the active user
