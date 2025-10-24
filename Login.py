@@ -1,5 +1,7 @@
+import getpass
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional
@@ -71,11 +73,18 @@ class UserProfile:
             ) from exc
 
         if password is None:
-            raise RuntimeError(
-                "No password found in the credential store for login "
-                f"'{self.login}'. Configure it using "
-                f"`python -m keyring set {self.service_name} {self.login}`."
+            prompt = (
+                "No password stored for "
+                f"{self.identifier} ({_mask_value(self.login)}). "
+                "Enter it now to save it securely: "
             )
+            password = getpass.getpass(prompt)
+            if not password:
+                raise RuntimeError(
+                    "A password is required to continue. Rerun the automation "
+                    "after providing credentials."
+                )
+            keyring.set_password(self.service_name, self.login, password)
         return password
 
 
@@ -126,14 +135,34 @@ def read_users() -> Dict[str, UserProfile]:
     return users
 
 
+def select_active_user(users: Dict[str, UserProfile]) -> str:
+    if not users:
+        raise RuntimeError("At least one user profile must be configured.")
+
+    if len(sys.argv) > 1:
+        candidate = sys.argv[1]
+        if candidate not in users:
+            raise RuntimeError(
+                f"Active user '{candidate}' is not defined in the configuration."
+            )
+        return candidate
+
+    env_user = os.getenv("ACTIVE_USER")
+    if env_user:
+        if env_user not in users:
+            raise RuntimeError(
+                f"Active user '{env_user}' is not defined in the configuration."
+            )
+        return env_user
+
+    return next(iter(users))
+
+
 # Read user data from configuration
 users = read_users()
 
 # Set active_user to the user you want to log in as
-# active_user = sys.argv[1]  # argv[0] is the script name, argv[1] is the first argument
-active_user = os.getenv("ACTIVE_USER") or next(iter(users))
-if active_user not in users:
-    raise RuntimeError(f"Active user '{active_user}' is not defined in the configuration.")
+active_user = select_active_user(users)
 
 log_info(f"Automation running for {active_user}.")
 

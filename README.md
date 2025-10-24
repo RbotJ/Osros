@@ -26,21 +26,29 @@ USER1=DisplayName
 LOGIN1=login@example.com
 USER2=AltAccount
 LOGIN2=alt@example.com
+USER3=Skiller
+LOGIN3=skiller@example.com
 
-# Optional – select which profile to use
+# Optional – select which profile to use by default
 ACTIVE_USER=User1
 
 # Optional – override the keyring service name (default is "Osros")
 # OSROS_KEYRING_SERVICE=Osros
 ```
 
-Passwords are stored securely in the operating system keychain via the [`keyring`](https://pypi.org/project/keyring/) library. Configure each login once (repeat for every `LOGINx` value) using:
+Passwords are stored securely in the operating system keychain via the [`keyring`](https://pypi.org/project/keyring/) library. The first time the automation needs a password for a `LOGINx` value it will prompt you securely in the terminal, save the secret to the keychain, and reuse it on subsequent runs. You can also configure each login manually (repeat for every `LOGINx` value) using:
 
 ```
 python -m keyring set Osros login@example.com
 ```
 
 On Windows this command writes to the Windows Credential Manager; on macOS it stores the secret in the Keychain; on Linux it integrates with SecretService/KWallet when available. Credentials are only decrypted in memory at the moment the automation types them into the client.
+
+To use a different profile for a given run, pass the desired identifier (for example `User2` or `User3`) as an argument:
+
+```
+python Login.py User3
+```
 
 Development Approach
 --------------------
