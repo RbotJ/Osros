@@ -1,46 +1,141 @@
-import cv2
-import numpy as np
-import pygetwindow as gw
-import pyautogui
-import win32api
-import win32con
+import logging
 import os
 import time
-from dotenv import load_dotenv
-import sys
+from dataclasses import dataclass
+from typing import Dict, Iterable, Optional
 
-# Load the .env file
-load_dotenv()
+import cv2
+import keyring
+import numpy as np
+import pyautogui
+import pygetwindow as gw
+import win32api
+import win32con
+from dotenv import dotenv_values, find_dotenv, load_dotenv
+from keyring.errors import KeyringError
 
 
-# Your users dictionary function
-def read_users():
-    users = {
-        'User1': {
-            'username': os.getenv('USER1'),
-            'password': os.getenv('PASS1'),
-            'login': os.getenv('LOGIN1')
-        },
-        'User2': {
-            'username': os.getenv('USER2'),
-            'password': os.getenv('PASS2'),
-            'login': os.getenv('ULOGIN2')
-        },
-        'User3': {
-            'username': os.getenv('USER3'),
-            'password': os.getenv('PASS3'),
-            'login': os.getenv('LOGIN3')
-        }
-    }
+DEFAULT_KEYRING_SERVICE = "Osros"
+
+
+def _mask_value(value: str) -> str:
+    if not value:
+        return value
+    if len(value) <= 4:
+        return "*" * len(value)
+    return f"{value[0]}{'*' * (len(value) - 2)}{value[-1]}"
+
+
+def _iter_sensitive_tokens() -> Iterable[str]:
+    user_profiles = globals().get("users", {})
+    if isinstance(user_profiles, dict):
+        for profile in user_profiles.values():
+            yield profile.username
+            yield profile.login
+
+
+def scrub_message(message: str, extra_tokens: Optional[Iterable[str]] = None) -> str:
+    scrubbed = message
+    for token in list(_iter_sensitive_tokens()) + list(extra_tokens or []):
+        if token:
+            scrubbed = scrubbed.replace(token, _mask_value(token))
+    return scrubbed
+
+
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter("%(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+
+def log_info(message: str, extra_sensitive: Optional[Iterable[str]] = None) -> None:
+    logger.info(scrub_message(message, extra_sensitive))
+
+
+@dataclass
+class UserProfile:
+    identifier: str
+    username: str
+    login: str
+    service_name: str
+
+    def resolve_password(self) -> str:
+        try:
+            password = keyring.get_password(self.service_name, self.login)
+        except KeyringError as exc:  # pragma: no cover - platform specific
+            raise RuntimeError(
+                f"Unable to access credential store '{self.service_name}': {exc}"
+            ) from exc
+
+        if password is None:
+            raise RuntimeError(
+                "No password found in the credential store for login "
+                f"'{self.login}'. Configure it using "
+                f"`python -m keyring set {self.service_name} {self.login}`."
+            )
+        return password
+
+
+def _load_env_values() -> Dict[str, str]:
+    env_path = os.getenv("OSROS_ENV_FILE") or find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(env_path)
+        return dotenv_values(env_path)
+    load_dotenv()
+    values: Dict[str, str] = {}
+    for key, value in os.environ.items():
+        if key.startswith("USER") and key[len("USER"):].isdigit():
+            values[key] = value
+        elif key.startswith("LOGIN") and key[len("LOGIN"):].isdigit():
+            values[key] = value
+    return values
+
+
+def read_users() -> Dict[str, UserProfile]:
+    env_values = _load_env_values()
+    service_name = os.getenv("OSROS_KEYRING_SERVICE", DEFAULT_KEYRING_SERVICE)
+
+    users: Dict[str, UserProfile] = {}
+    for key, value in env_values.items():
+        if not key.startswith("USER") or not value:
+            continue
+
+        suffix = key[len("USER"):]
+        if suffix and not suffix.isdigit():
+            continue
+        login_key = f"LOGIN{suffix}"
+        login_value = env_values.get(login_key) or os.getenv(login_key) or value
+        identifier = f"User{suffix or '1'}"
+        profile = UserProfile(
+            identifier=identifier,
+            username=value,
+            login=login_value,
+            service_name=service_name,
+        )
+        users[identifier] = profile
+
+    if not users:
+        raise RuntimeError(
+            "No user profiles found. Ensure your .env file defines entries like "
+            "USER1=YourDisplayName and LOGIN1=your@email.com."
+        )
+
     return users
 
 
-# Read user data from .env
+# Read user data from configuration
 users = read_users()
 
 # Set active_user to the user you want to log in as
 # active_user = sys.argv[1]  # argv[0] is the script name, argv[1] is the first argument
-active_user = 'User3'
+active_user = os.getenv("ACTIVE_USER") or next(iter(users))
+if active_user not in users:
+    raise RuntimeError(f"Active user '{active_user}' is not defined in the configuration.")
+
+log_info(f"Automation running for {active_user}.")
 
 title = "RuneLite"
 window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
@@ -97,7 +192,7 @@ while True:
         # If a match is found, draw a rectangle and break the loop as we've identified the state
         for pt in zip(*loc[::-1]):
             cv2.rectangle(screenshot_np, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
-            print(f"State recognized: {template_name}")
+            log_info(f"State recognized: {template_name}")
             state_recognized = True
 
             # New code: act depending on the detected state
@@ -108,12 +203,14 @@ while True:
             elif template_name == 'LoginField.png':
                 # Click the detected login field and type username
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['login'])
+                pyautogui.write(users[active_user].login)
                 time.sleep(1)
             elif template_name == 'PassField.png':
                 # Click the detected password field and type password
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['password'])
+                password = users[active_user].resolve_password()
+                pyautogui.write(password)
+                del password
                 time.sleep(1)
                 pyautogui.press('enter')  # Press Enter to submit
                 time.sleep(1)
@@ -122,12 +219,12 @@ while True:
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
             elif template_name == '4 InGame.jpg':
                 # Detected in-game state, print it for now, add desired functionality here
-                print("In-game state detected")
+                log_info("In-game state detected")
 
             break  # Break out of the loop once a match is found and handled
 
     if not state_recognized:
-        print("No state recognized: Waiting")
+        log_info("No state recognized: Waiting")
 
     cv2.imshow("Window", screenshot_np)
     if cv2.waitKey(1) & 0xFF == ord('q'):  # Quit if 'q' is pressed

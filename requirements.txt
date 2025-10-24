@@ -7,3 +7,4 @@ numpy==1.25.0
 pypiwin32~=223
 pywin32~=306
 pygame~=2.4.0
+keyring~=24.3
