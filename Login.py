@@ -39,8 +39,10 @@ def read_users():
 users = read_users()
 
 # Set active_user to the user you want to log in as
-# active_user = sys.argv[1]  # argv[0] is the script name, argv[1] is the first argument
-active_user = 'User3'
+if len(sys.argv) > 1:
+    active_user = sys.argv[1]
+else:
+    active_user = 'User3'
 
 title = "RuneLite"
 window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
