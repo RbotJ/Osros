@@ -1,46 +1,92 @@
 import cv2
+import logging
 import numpy as np
-import pygetwindow as gw
+import os
+import sys
+import time
+
 import pyautogui
+import pygetwindow as gw
 import win32api
 import win32con
-import os
-import time
 from dotenv import load_dotenv
-import sys
 
 # Load the .env file
 load_dotenv()
 
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
 # Your users dictionary function
 def read_users():
-    users = {
-        'User1': {
-            'username': os.getenv('USER1'),
-            'password': os.getenv('PASS1'),
-            'login': os.getenv('LOGIN1')
-        },
-        'User2': {
-            'username': os.getenv('USER2'),
-            'password': os.getenv('PASS2'),
-            'login': os.getenv('ULOGIN2')
-        },
-        'User3': {
-            'username': os.getenv('USER3'),
-            'password': os.getenv('PASS3'),
-            'login': os.getenv('LOGIN3')
+    users = {}
+    index = 1
+
+    while True:
+        prefix = f"USER{index}"
+        username = os.getenv(f"{prefix}_USERNAME")
+        password = os.getenv(f"{prefix}_PASSWORD")
+        login = os.getenv(f"{prefix}_LOGIN")
+
+        if not any((username, password, login)):
+            # Stop reading once we encounter an entirely empty block of credentials
+            break
+
+        users[f"User{index}"] = {
+            'username': username,
+            'password': password,
+            'login': login
         }
-    }
+        index += 1
+
     return users
 
 
 # Read user data from .env
 users = read_users()
 
-# Set active_user to the user you want to log in as
-# active_user = sys.argv[1]  # argv[0] is the script name, argv[1] is the first argument
-active_user = 'User3'
+if not users:
+    logging.error("No users were loaded from the environment. Please ensure credentials are configured.")
+    sys.exit(1)
+
+
+def get_active_user(argv, available_users):
+    if len(argv) < 2:
+        logging.error("No active user specified. Usage: python Login.py <UserX>")
+        sys.exit(1)
+
+    requested_user = argv[1].lower()
+    for user in available_users:
+        if user.lower() == requested_user:
+            return user
+
+    logging.error(
+        "Active user '%s' was not found. Available users: %s",
+        argv[1],
+        ", ".join(sorted(available_users))
+    )
+    sys.exit(1)
+
+
+active_user = get_active_user(sys.argv, users)
+credentials = users[active_user]
+
+
+def validate_credentials(user_key, creds):
+    missing = [field for field, value in creds.items() if not value]
+    if missing:
+        logging.error(
+            "Missing credential fields for %s: %s. Check the environment configuration before retrying.",
+            user_key,
+            ", ".join(missing)
+        )
+        return False
+    return True
+
+
+if not validate_credentials(active_user, credentials):
+    sys.exit(1)
 
 title = "RuneLite"
 window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
@@ -97,7 +143,7 @@ while True:
         # If a match is found, draw a rectangle and break the loop as we've identified the state
         for pt in zip(*loc[::-1]):
             cv2.rectangle(screenshot_np, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2)
-            print(f"State recognized: {template_name}")
+            logging.info("State recognized: %s", template_name)
             state_recognized = True
 
             # New code: act depending on the detected state
@@ -108,12 +154,12 @@ while True:
             elif template_name == 'LoginField.png':
                 # Click the detected login field and type username
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['login'])
+                pyautogui.write(credentials['login'])
                 time.sleep(1)
             elif template_name == 'PassField.png':
                 # Click the detected password field and type password
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['password'])
+                pyautogui.write(credentials['password'])
                 time.sleep(1)
                 pyautogui.press('enter')  # Press Enter to submit
                 time.sleep(1)
@@ -127,7 +173,7 @@ while True:
             break  # Break out of the loop once a match is found and handled
 
     if not state_recognized:
-        print("No state recognized: Waiting")
+        logging.info("No state recognized: Waiting")
 
     cv2.imshow("Window", screenshot_np)
     if cv2.waitKey(1) & 0xFF == ord('q'):  # Quit if 'q' is pressed
