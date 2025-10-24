@@ -1,12 +1,18 @@
+import logging
 import os
-import tkinter as tk
-from tkinter import Button, Label, ttk
-from dotenv import load_dotenv
-import psutil
+import subprocess
 import threading
 import time
-import subprocess
-import cv2
+import tkinter as tk
+from tkinter import Button, Label, ttk
+
+import psutil
+from dotenv import load_dotenv
+
+from automation.logging_config import configure_logging
+
+
+logger = logging.getLogger(__name__)
 
 class MainWindow:
     def __init__(self, master, active_user, usernames):
@@ -83,35 +89,36 @@ class MainWindow:
 
     def on_username_select(self, event):
         self.active_user = self.combo.get()
-        print(f"Active User is {self.active_user}")
+        logger.info("Active user changed", extra={"active_user": self.active_user})
 
     def launch(self):
+        logger.info("Launching RuneLite", extra={"path": self.runelite_path})
         os.startfile(self.runelite_path)
 
     def login(self):
-        print("Login button was clicked!")
+        logger.info("Login button clicked", extra={"active_user": self.active_user})
         subprocess.Popen(['python', 'Sprint4/Login.py', self.active_user])
 
     def logout(self):
-        print("Logout button was clicked!")
+        logger.info("Logout button clicked")
 
     def agility(self):
-        print("Agility button was clicked!")
+        logger.info("Agility button clicked")
 
     def fletching(self):
-        print("Fletching button was clicked!")
+        logger.info("Fletching button clicked")
 
     def mining(self):
-        print("Mining button was clicked!")
+        logger.info("Mining button clicked")
 
     def lumbridge(self):
-        print("Lumbridge button was clicked!")
+        logger.info("Lumbridge navigation clicked")
 
     def varrock(self):
-        print("Varrock button was clicked!")
+        logger.info("Varrock navigation clicked")
 
     def ge(self):
-        print("GE button was clicked!")
+        logger.info("Grand Exchange navigation clicked")
 
     def check_runelite(self):
         if self.is_runelite_running():
@@ -158,6 +165,8 @@ def get_usernames(accounts):
     return [account_info['username'] for account_info in accounts.values()]
 
 
+configure_logging()
+logger.info("Loading accounts for main window")
 accounts = load_accounts()
 usernames = get_usernames(accounts)
 active_user = usernames[0]  # Set the first user as the active user
