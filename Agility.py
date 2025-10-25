@@ -67,6 +67,7 @@ def click_on_position(queue):
             pyautogui.click()
             time.sleep(4)  # Add a 4-second delay after each click
 
+from __future__ import annotations
 
 def make_decision(
     templates,
@@ -138,8 +139,7 @@ def main():
     title = "RuneLite"
     window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
 
-    current_map = None
-    clicks_to_spend = 0
+import cv2
 
     # Prepare templates
     template_dir = 'Agility/Canifis/'
@@ -148,13 +148,10 @@ def main():
         for filename in os.listdir(template_dir)
     }
 
-    # Create a window for displaying the image
-    cv2.namedWindow("Window", cv2.WINDOW_AUTOSIZE)
-    window_resized = False  # A flag to check whether the window has been resized or not
 
-    queue = mp.Queue()
-    p = mp.Process(target=click_on_position, args=(queue,))
-    p.start()
+def main() -> None:
+    skill = AgilitySkill()
+    skill.start()
     try:
         while True:
             # Check if the window is minimized and restore it if necessary
@@ -217,8 +214,9 @@ def main():
     except Exception as exc:
         logger.exception("An error occurred during agility automation", exc_info=exc)
     finally:
-        p.terminate()  # Make sure to terminate the click_on_position process when main process ends.
-        cv2.destroyAllWindows()
+        skill.stop()
+        time.sleep(0.1)
+
 
 if __name__ == "__main__":
     main()
