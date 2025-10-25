@@ -4,6 +4,7 @@ import sys
 import time
 
 import cv2
+import logging
 import numpy as np
 import pyautogui
 import pygetwindow as gw
@@ -21,25 +22,49 @@ configure_logging()
 load_dotenv()
 
 
-# Your users dictionary function
-def read_users():
-    users = {
-        'User1': {
-            'username': os.getenv('USER1'),
-            'password': os.getenv('PASS1'),
-            'login': os.getenv('LOGIN1')
-        },
-        'User2': {
-            'username': os.getenv('USER2'),
-            'password': os.getenv('PASS2'),
-            'login': os.getenv('ULOGIN2')
-        },
-        'User3': {
-            'username': os.getenv('USER3'),
-            'password': os.getenv('PASS3'),
-            'login': os.getenv('LOGIN3')
-        }
-    }
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+@dataclass
+class UserCredentials:
+    username: str
+    password: str
+    login: str
+
+    def missing_fields(self) -> Iterable[str]:
+        return [
+            field
+            for field, value in (
+                ("username", self.username),
+                ("password", self.password),
+                ("login", self.login),
+            )
+            if not value
+        ]
+
+
+def read_users() -> Dict[str, UserCredentials]:
+    users: Dict[str, UserCredentials] = {}
+    index = 1
+
+    while True:
+        prefix = f"USER{index}"
+        username = os.getenv(f"{prefix}_USERNAME")
+        password = os.getenv(f"{prefix}_PASSWORD")
+        login = os.getenv(f"{prefix}_LOGIN")
+
+        if not any((username, password, login)):
+            # Stop reading once we encounter an entirely empty block of credentials
+            break
+
+        credentials = UserCredentials(
+            username=username or "",
+            password=password or "",
+            login=login or "",
+        )
+        users[f"User{index}"] = credentials
+        index += 1
+
     return users
 
 
