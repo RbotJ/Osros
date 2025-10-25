@@ -6,7 +6,6 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-import cv2
 import numpy as np
 
 from ..cursor import CursorAction, HumanLikeCursor
@@ -78,23 +77,49 @@ class AgilityDecisionEngine:
 class AgilitySkill(SkillTask):
     """Implements the agility routine using the shared services."""
 
-    def __init__(self, template_dir: str = "Agility/Canifis/", window_title: str = "RuneLite") -> None:
-        self._window_service = WindowCaptureService(window_title)
-        self._window_service.configure_preview("RuneLite Capture")
-        self._templates = TemplateLibrary(template_dir)
-        self._cursor = HumanLikeCursor()
-        self._decision_engine = AgilityDecisionEngine(self._templates)
+    def __init__(
+        self,
+        template_dir: str = "Agility/Canifis/",
+        window_title: str = "RuneLite",
+        *,
+        window_service: Optional[WindowCaptureService] = None,
+        template_library: Optional[TemplateLibrary] = None,
+        cursor: Optional[HumanLikeCursor] = None,
+        decision_engine: Optional[AgilityDecisionEngine] = None,
+        enable_preview: bool = True,
+        preview_name: str = "RuneLite Capture",
+        manage_window_geometry: bool = True,
+    ) -> None:
+        self._window_service = window_service or WindowCaptureService(
+            window_title, manage_geometry=manage_window_geometry
+        )
+        self._preview_name = preview_name if enable_preview else None
+        self._preview_configured = False
+
+        self._templates = template_library or TemplateLibrary(template_dir)
+        self._cursor = cursor or HumanLikeCursor()
+        self._own_cursor = cursor is None
+        self._cursor_started = False
+        self._decision_engine = decision_engine or AgilityDecisionEngine(self._templates)
         self._running = False
 
     def start(self) -> None:
-        self._cursor.start()
+        if self._preview_name and not self._preview_configured:
+            self._window_service.configure_preview(self._preview_name)
+            self._preview_configured = True
+        if not self._cursor_started:
+            self._cursor.start()
+            self._cursor_started = True
         self._running = True
 
     def stop(self) -> None:
         self._running = False
-        self._cursor.stop()
-        self._window_service.close_preview()
-        cv2.destroyAllWindows()
+        if self._own_cursor and self._cursor_started:
+            self._cursor.stop()
+        self._cursor_started = False
+        if self._preview_configured and self._preview_name is not None:
+            self._window_service.close_preview()
+            self._preview_configured = False
 
     def update(self) -> None:
         if not self._running:

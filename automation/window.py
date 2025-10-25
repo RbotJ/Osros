@@ -38,10 +38,12 @@ class WindowCaptureService:
         *,
         size_ratio: float = 0.5,
         position: Tuple[int, int] = (0, 0),
+        manage_geometry: bool = True,
     ) -> None:
         self._title = title
         self._size_ratio = size_ratio
         self._position = position
+        self._manage_geometry = manage_geometry
         self._window = self._get_window()
         self._preview_name: Optional[str] = None
 
@@ -74,18 +76,29 @@ class WindowCaptureService:
             height=new_height,
         )
 
+    def _current_geometry(self) -> WindowGeometry:
+        return WindowGeometry(
+            left=self._window.left,
+            top=self._window.top,
+            width=self._window.width,
+            height=self._window.height,
+        )
+
     def prepare_window(self) -> WindowGeometry:
-        """Ensure the window is restored, resized and positioned."""
+        """Ensure the window is visible and optionally resized and positioned."""
 
         self._ensure_window_visible()
-        geometry = self._desired_geometry()
-        if self._window.width != geometry.width or self._window.height != geometry.height:
-            self._window.resizeTo(geometry.width, geometry.height)
-        self._window.moveTo(geometry.left, geometry.top)
+        if self._manage_geometry:
+            geometry = self._desired_geometry()
+            if self._window.width != geometry.width or self._window.height != geometry.height:
+                self._window.resizeTo(geometry.width, geometry.height)
+            self._window.moveTo(geometry.left, geometry.top)
+        else:
+            geometry = self._current_geometry()
         self._window.activate()
         if self._preview_name:
             cv2.resizeWindow(self._preview_name, geometry.width, geometry.height)
-            cv2.moveWindow(self._preview_name, geometry.width, geometry.top)
+            cv2.moveWindow(self._preview_name, geometry.left, geometry.top)
         return geometry
 
     def capture(self) -> Tuple[np.ndarray, np.ndarray]:
