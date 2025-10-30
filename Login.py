@@ -1,28 +1,32 @@
+"""Automated RuneLite login backed by secure credential loading.
+
+The module decrypts credentials from the hardware-bound ``.env.enc`` store
+and feeds them into the automation workflow. Sensitive values are masked
+from log output globally via ``utils.log_sanitizer``.
+"""
+
 import logging
 import os
 import sys
 import time
+from dataclasses import dataclass
+from typing import Dict, Iterable
 
 import cv2
-import logging
 import numpy as np
 import pyautogui
 import pygetwindow as gw
 import win32api
 import win32con
-from dotenv import load_dotenv
 
 from automation.logging_config import configure_logging
+from utils.env_manager import SecureEnvManager
+from utils.log_sanitizer import register_sensitive_values
 
 
 logger = logging.getLogger(__name__)
 
-# Load the .env file
 configure_logging()
-load_dotenv()
-
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
 @dataclass
@@ -44,35 +48,45 @@ class UserCredentials:
 
 
 def read_users() -> Dict[str, UserCredentials]:
+    manager = SecureEnvManager()
+    raw_users = manager.get_user_credentials()
+
     users: Dict[str, UserCredentials] = {}
-    index = 1
 
-    while True:
-        prefix = f"USER{index}"
-        username = os.getenv(f"{prefix}_USERNAME")
-        password = os.getenv(f"{prefix}_PASSWORD")
-        login = os.getenv(f"{prefix}_LOGIN")
-
-        if not any((username, password, login)):
-            # Stop reading once we encounter an entirely empty block of credentials
-            break
-
-        credentials = UserCredentials(
-            username=username or "",
-            password=password or "",
-            login=login or "",
+    for label, credentials in raw_users.items():
+        user = UserCredentials(
+            username=credentials.get("username", ""),
+            password=credentials.get("password", ""),
+            login=credentials.get("login", ""),
         )
-        users[f"User{index}"] = credentials
-        index += 1
 
+        missing = user.missing_fields()
+        if missing:
+            logger.warning(
+                "User credentials missing fields",
+                extra={"user": label, "missing": ",".join(missing)},
+            )
+
+        users[label] = user
+
+    register_sensitive_values(
+        value
+        for creds in raw_users.values()
+        for value in (creds.get("username"), creds.get("password"), creds.get("login"))
+        if value
+    )
     return users
 
 
-# Read user data from .env
 users = read_users()
 
 # Set active_user to the user you want to log in as
-active_user = sys.argv[1] if len(sys.argv) > 1 else 'User3'
+active_user = sys.argv[1] if len(sys.argv) > 1 else "User1"
+
+if active_user not in users:
+    logger.error("Requested user is not defined", extra={"active_user": active_user})
+    raise SystemExit(1)
+
 logger.info("Starting login automation", extra={"active_user": active_user})
 
 title = "RuneLite"
@@ -146,13 +160,13 @@ while True:
             elif template_name == 'LoginField.png':
                 # Click the detected login field and type username
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['login'])
+                pyautogui.write(users[active_user].login)
                 logger.info("Entered username", extra={"user": active_user})
                 time.sleep(1)
             elif template_name == 'PassField.png':
                 # Click the detected password field and type password
                 pyautogui.click(window.left + pt[0] + w // 2, window.top + pt[1] + h // 2)
-                pyautogui.write(users[active_user]['password'])
+                pyautogui.write(users[active_user].password)
                 time.sleep(1)
                 pyautogui.press('enter')  # Press Enter to submit
                 logger.info("Password submitted", extra={"user": active_user})

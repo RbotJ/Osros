@@ -38,19 +38,25 @@ The automation stack targets Windows because it depends on Win32 APIs for window
 ## Environment configuration
 1. **Create your `.env` file**
    ```powershell
-   copy Template.env .env
+   copy template.env .env
    ```
 
 2. **Populate account credentials**
-   - Fill in each block of variables (`USER1_USERNAME`, `USER1_PASSWORD`, `USER1_LOGIN`, etc.).
-   - The Tkinter GUI also recognises legacy aliases (`USER1`, `PASS1`, `USER1_LOGIN`, etc.). Duplicate the username and password values into both naming styles to keep the GUI and legacy automation scripts in sync.
+   - Fill in each block of variables (`USER1_USERNAME`, `USER1_PASSWORD`, `USER1_LOGIN`, etc.). Add additional users by incrementing the suffix number.
+   - Save the file locally; it is ignored by Git so your credentials never leave the workstation.
 
-3. **Add client paths and options**
-   - Set `RuneLite` to the full path of `RuneLite.exe` (for example, `C:\Program Files\RuneLite\RuneLite.exe`).
-   - Include any other environment flags your local automations require.
+3. **Encrypt the credentials locally**
+   ```powershell
+   python -m utils.env_manager encrypt
+   ```
+   This command binds an encrypted `.env.enc` file to your machine using the hardware MAC address. The automation automatically decrypts the file in memory at runtime. If you ever need to restore the plaintext `.env`, run `python -m utils.env_manager decrypt` on the same machine.
 
-4. **Keep secrets secure**
-   - The `.env` file stays untracked by Git. Store it outside of shared drives when possible.
+4. **Add client paths and options**
+   - Set `RUNE_LITE_PATH` (or any other project-specific options) in `.env` before encrypting.
+   - Re-run the `encrypt` command whenever you update the plaintext file.
+
+5. **Keep secrets secure**
+   - Both `.env` and `.env.enc` are ignored by Git. Avoid copying them to shared storage.
 
 ## Launching the GUI control panel
 The Tkinter GUI (`main.py`) is the entry-point for monitoring RuneLite, launching login automation, and triggering navigation helpers.
@@ -77,6 +83,8 @@ Several standalone automation modules are included for specialised tasks. Each m
 Most automation flows depend on template assets in the `Agility/` and `Login/` directories. Review the [template capture guide](docs/template_capture.md) before adding or updating images.
 
 ## Automation workflow tips
+- The login automation now decrypts credentials from the hardware-bound `.env.enc` file using `utils.env_manager.SecureEnvManager`. Multiple accounts remain supported; select the desired label (for example `User1`, `User2`) when launching `Login.py` or via the GUI.
+- All console output and log files pass through a sanitizer that masks usernames, emails, and passwords. If you add new logging statements that might include credentials, register them with `utils.log_sanitizer.register_sensitive_values`.
 - Verify that RuneLite is set to **fixed window size** and **English locale** so templates align correctly.
 - Run scripts in a maximised PowerShell window with Administrator privileges if you encounter permission issues when automating input.
 - Use the provided logging utilities (`automation/logging_config.py`) to capture structured logs during long-running automation sessions.
