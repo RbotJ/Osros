@@ -1,6 +1,7 @@
-import os
+import argparse
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Optional, Sequence
 
 import cv2
@@ -12,29 +13,80 @@ import win32con
 
 from secure_credentials import CredentialManager
 
+DEFAULT_TEMPLATE_DIR = Path("Login")
 
-def _prepare_templates(template_dir: str) -> Dict[str, np.ndarray]:
-    return {
-        filename: cv2.imread(os.path.join(template_dir, filename), 0)
-        for filename in os.listdir(template_dir)
-    }
+
+def _prepare_templates(
+    template_dir: Path, credential_manager: CredentialManager
+) -> Dict[str, np.ndarray]:
+    if not template_dir.exists():
+        raise FileNotFoundError(
+            f"Template directory '{template_dir}' was not found."
+        )
+
+    templates: Dict[str, np.ndarray] = {}
+    for path in sorted(template_dir.iterdir()):
+        if not path.is_file():
+            continue
+        image = cv2.imread(str(path), 0)
+        if image is None:
+            credential_manager.log_info(
+                f"Skipping unreadable template '{path.name}'."
+            )
+            continue
+        templates[path.name] = image
+
+    if not templates:
+        raise RuntimeError(
+            f"No templates could be loaded from '{template_dir}'. Ensure the directory contains image files."
+        )
+    credential_manager.log_info(
+        f"Loaded {len(templates)} template(s) from '{template_dir}'."
+    )
+    return templates
+
+
+def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="RuneLite automation login assistance."
+    )
+    parser.add_argument(
+        "user",
+        nargs="?",
+        help="Profile identifier to use (for example User1, User2, etc.)",
+    )
+    parser.add_argument(
+        "--templates",
+        type=Path,
+        help=(
+            "Path to the directory of login state templates. "
+            "Defaults to the project Login/ folder."
+        ),
+    )
+    return parser.parse_args(argv[1:])
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     argv = list(argv) if argv is not None else sys.argv
+    args = _parse_args(argv)
     credential_manager = CredentialManager()
     users = credential_manager.read_users()
-    candidate = CredentialManager.candidate_from_argv(argv)
-    active_user = credential_manager.select_active_user(users, candidate)
+    active_user = credential_manager.select_active_user(users, args.user)
+    active_profile = credential_manager.get_user(active_user)
 
-    credential_manager.log_info(f"Automation running for {active_user}.")
+    credential_manager.log_info(f"Automation running for {active_profile.identifier}.")
 
     title = "RuneLite"
-    window = gw.getWindowsWithTitle(title)[0]  # get the first window with this title
+    windows = gw.getWindowsWithTitle(title)
+    if not windows:
+        raise RuntimeError(
+            "RuneLite window not found. Ensure the client is running before starting the automation."
+        )
+    window = windows[0]
 
     # Prepare templates
-    template_dir = "Login/"  # directory with templates
-    templates = _prepare_templates(template_dir)
+    template_dir = args.templates or DEFAULT_TEMPLATE_DIR
+    templates = _prepare_templates(template_dir, credential_manager)
 
     # Create a window for displaying the image
     cv2.namedWindow("Window", cv2.WINDOW_NORMAL)
@@ -105,14 +157,14 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     pyautogui.click(
                         window.left + pt[0] + w // 2, window.top + pt[1] + h // 2
                     )
-                    pyautogui.write(users[active_user].login)
+                    pyautogui.write(active_profile.login)
                     time.sleep(1)
                 elif template_name == "PassField.png":
                     # Click the detected password field and type password
                     pyautogui.click(
                         window.left + pt[0] + w // 2, window.top + pt[1] + h // 2
                     )
-                    password = users[active_user].resolve_password()
+                    password = active_profile.resolve_password()
                     pyautogui.write(password)
                     del password
                     time.sleep(1)

@@ -5,7 +5,8 @@ import getpass
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Sequence
+from pathlib import Path
+from typing import Dict, Iterable, Mapping, Optional, Sequence
 
 import keyring
 from dotenv import dotenv_values, find_dotenv, load_dotenv
@@ -57,11 +58,22 @@ def _mask_value(value: str) -> str:
     return f"{value[0]}{'*' * (len(value) - 2)}{value[-1]}"
 
 
-def _load_env_values() -> Dict[str, str]:
-    env_path = os.getenv("OSROS_ENV_FILE") or find_dotenv(usecwd=True)
-    if env_path:
+def _load_env_values(explicit_path: Optional[os.PathLike[str]] = None) -> Dict[str, str]:
+    discovered = find_dotenv(usecwd=True)
+    env_path = (
+        Path(explicit_path)
+        if explicit_path is not None
+        else Path(os.getenv("OSROS_ENV_FILE"))
+        if os.getenv("OSROS_ENV_FILE")
+        else Path(discovered)
+        if discovered
+        else None
+    )
+
+    if env_path and env_path.exists():
         load_dotenv(env_path)
-        return dotenv_values(env_path)
+        return dict(dotenv_values(env_path))
+
     load_dotenv()
     values: Dict[str, str] = {}
     for key, value in os.environ.items():
@@ -83,8 +95,14 @@ def _scrub_message(message: str, tokens: Iterable[str]) -> str:
 class CredentialManager:
     """Coordinate loading user profiles and logging without leaking secrets."""
 
-    def __init__(self, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(
+        self,
+        logger: Optional[logging.Logger] = None,
+        *,
+        env_path: Optional[os.PathLike[str]] = None,
+    ) -> None:
         self.logger = logger or self._build_default_logger()
+        self._env_path = Path(env_path) if env_path is not None else None
         self._users: Dict[str, UserProfile] = {}
 
     @staticmethod
@@ -99,7 +117,7 @@ class CredentialManager:
         return logger
 
     def read_users(self) -> Dict[str, UserProfile]:
-        env_values = _load_env_values()
+        env_values = _load_env_values(self._env_path)
         service_name = os.getenv("OSROS_KEYRING_SERVICE", DEFAULT_KEYRING_SERVICE)
 
         users: Dict[str, UserProfile] = {}
@@ -127,8 +145,9 @@ class CredentialManager:
                 "USER1=YourDisplayName and LOGIN1=your@email.com."
             )
 
-        self._users = users
-        return users
+        ordered_items = sorted(users.items(), key=lambda item: item[0])
+        self._users = {identifier: profile for identifier, profile in ordered_items}
+        return dict(self._users)
 
     def select_active_user(
         self, users: Dict[str, UserProfile], candidate: Optional[str] = None
@@ -165,6 +184,17 @@ class CredentialManager:
     @staticmethod
     def candidate_from_argv(argv: Sequence[str]) -> Optional[str]:
         return argv[1] if len(argv) > 1 else None
+
+    def get_user(self, identifier: str) -> UserProfile:
+        if identifier not in self._users:
+            raise KeyError(
+                f"User '{identifier}' has not been loaded. Call read_users() first."
+            )
+        return self._users[identifier]
+
+    @property
+    def users(self) -> Mapping[str, UserProfile]:
+        return dict(self._users)
 
 
 __all__ = ["CredentialManager", "UserProfile"]

@@ -50,6 +50,13 @@ To use a different profile for a given run, pass the desired identifier (for exa
 python Login.py User3
 ```
 
+When experimenting with alternative template sets, pass `--templates` with the
+path to the directory that contains the images to match:
+
+```
+python Login.py --templates custom_templates/
+```
+
 Development Approach
 --------------------
 
