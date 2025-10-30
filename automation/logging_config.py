@@ -5,9 +5,18 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from utils.log_sanitizer import SensitiveDataFilter
+
 STRUCTURED_LOG_FORMAT = (
     "timestamp=%(asctime)s level=%(levelname)s logger=%(name)s message=\"%(message)s\""
 )
+
+
+def _ensure_sanitizer(root_logger: logging.Logger) -> None:
+    """Attach the sensitive data filter once to the root logger."""
+
+    if not any(isinstance(f, SensitiveDataFilter) for f in root_logger.filters):
+        root_logger.addFilter(SensitiveDataFilter())
 
 
 def configure_logging(level: int = logging.INFO, handler: Optional[logging.Handler] = None) -> None:
@@ -22,6 +31,8 @@ def configure_logging(level: int = logging.INFO, handler: Optional[logging.Handl
         logging.basicConfig(level=level, format=STRUCTURED_LOG_FORMAT)
     else:
         root_logger.setLevel(level)
+
+    _ensure_sanitizer(root_logger)
 
     if handler and handler not in root_logger.handlers:
         root_logger.addHandler(handler)
